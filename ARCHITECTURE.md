@@ -1,0 +1,2 @@
+# PAWS Console — Architecture
+

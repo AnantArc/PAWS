@@ -1,0 +1,325 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   PAWS DESIGN TOKENS — one system, two themes.
+   Colour means STATUS only. Status colours never change theme.
+   ============================================================ */
+:root,
+:root[data-theme="dark"] {
+  --bg: 10 15 26;
+  --surface: 17 26 43;
+  --surface-2: 22 35 58;
+  --border: 30 42 61;
+  --text-primary: 230 237 247;
+  --text-muted: 143 163 191;
+  --text-faint: 112 128 154;
+  --accent: 34 211 238;
+  --accent-dim: 14 52 70;
+  --status-ok: 52 211 153;
+  --status-warn: 245 158 11;
+  --status-critical: 248 113 113;
+  --status-info: 56 189 248;
+  --sim-badge: 167 139 250;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: 244 246 249;
+  --surface: 255 255 255;
+  --surface-2: 238 242 247;
+  --border: 221 228 238;
+  --text-primary: 15 23 42;
+  --text-muted: 71 85 105;
+  --text-faint: 148 163 184;
+  --accent: 8 145 178;
+  --accent-dim: 205 234 242;
+  --status-ok: 5 150 105;
+  --status-warn: 217 119 6;
+  --status-critical: 220 38 38;
+  --status-info: 2 132 199;
+  --sim-badge: 124 58 237;
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--text-primary));
+  font-feature-settings: "cv02", "cv03";
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+/* Numbers that must not jitter: every metric uses these */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+/* Slim scrollbars that fit the console look */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 3px;
+}
+
+/* Subtle glow for the robot trail on the map (tasteful, not neon) */
+.trail-glow {
+  filter: drop-shadow(0 0 4px rgb(var(--accent)));
+}
+
+/* Simulated badge — always visible, never decorative */
+.sim-badge {
+  background: rgb(var(--sim-badge));
+  color: #fff;
+}
+
+/* Status chip base */
+.chip {
+  @apply inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide;
+}
+
+/* Loading screen progress bar */
+@keyframes paws-progress {
+  0% {
+    width: 4%;
+  }
+  60% {
+    width: 62%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+.paws-progress-bar {
+  animation: paws-progress 1.4s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+}
+
+@keyframes paws-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.paws-float {
+  animation: paws-float 2.4s ease-in-out infinite;
+}
+
+@keyframes paws-fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fadein {
+  animation: paws-fadein 0.35s ease-out both;
+}
+
+@keyframes paws-risein {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-risein {
+  animation: paws-risein 0.35s ease-out both;
+}
+
+/* ============================================================
+   PUBLIC LANDING SURFACE  (additive — the Mission Console keeps
+   its own tokens above and is not affected by anything below)
+   The public page uses a warm amber identity; the console keeps
+   its status-cyan. Each surface owns its own scrim + panel vars
+   so the same photograph reads correctly in both themes.
+   ============================================================ */
+:root[data-theme="dark"] {
+  --land-amber: 249 115 22;
+  --land-scrim: 11 15 26;
+  --land-wash: 0;              /* the photograph is never dimmed */
+  --land-veil-1: 0.96;         /* heavy where the copy sits …   */
+  --land-veil-2: 0.92;
+  --land-veil-3: 0.86;
+  --land-veil-4: 0.66;
+  --land-veil-5: 0.3;          /* … then a slow fade out …      */
+  --land-veil-6: 0.02;         /* … to an untouched photo       */
+  --land-panel: 17 26 43;
+  --land-panel-soft: 0.6;      /* frosted glass over the rubble */
+  --land-hair: 255 255 255;
+  --land-hair-a: 0.18;
+  --land-shadow: 0 22px 50px -28px rgb(0 0 0 / 0.85);
+}
+
+:root[data-theme="light"] {
+  --land-amber: 234 88 12;
+  --land-scrim: 252 249 244;
+  --land-wash: 0;
+  --land-veil-1: 0.97;
+  --land-veil-2: 0.93;
+  --land-veil-3: 0.88;
+  --land-veil-4: 0.72;
+  --land-veil-5: 0.38;
+  --land-veil-6: 0.08;
+  --land-panel: 255 255 255;
+  --land-panel-soft: 0.86;
+  --land-hair: 15 23 42;
+  --land-hair-a: 0.1;
+  --land-shadow: 0 18px 40px -26px rgb(15 23 42 / 0.32);
+}
+
+.land-amber-text {
+  color: rgb(var(--land-amber));
+}
+.land-amber-bg {
+  background: rgb(var(--land-amber));
+}
+.land-amber-soft {
+  background: rgb(var(--land-amber) / 0.12);
+}
+.land-amber-border {
+  border-color: rgb(var(--land-amber) / 0.45);
+}
+
+/* One photograph, two treatments. The image itself is never tinted or
+   dimmed: the scrim simply fades in toward the copy side and is fully
+   transparent by the time it passes the sign-in card, so the rubble stays
+   as bright as the photograph it came from. */
+.land-photo {
+  object-fit: cover;
+  object-position: 58% 52%;
+}
+.land-wash {
+  background: rgb(var(--land-scrim) / var(--land-wash));
+}
+.land-veil {
+  background: linear-gradient(
+    97deg,
+    rgb(var(--land-scrim) / var(--land-veil-1)) 0%,
+    rgb(var(--land-scrim) / var(--land-veil-2)) 20%,
+    rgb(var(--land-scrim) / var(--land-veil-3)) 45%,
+    rgb(var(--land-scrim) / var(--land-veil-4)) 62%,
+    rgb(var(--land-scrim) / var(--land-veil-5)) 80%,
+    rgb(var(--land-scrim) / var(--land-veil-6)) 100%
+  );
+}
+
+/* Floating surfaces: feature boxes + the sign-in card */
+.land-panel {
+  background: rgb(var(--land-panel) / var(--land-panel-soft));
+  border: 1px solid rgb(var(--land-hair) / var(--land-hair-a));
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: var(--land-shadow);
+}
+
+/* The sign-in card is deliberately quiet at rest — amber appears only
+   when the pointer or keyboard focus is on it. */
+.land-card {
+  background: rgb(var(--land-panel) / 0.92);
+  border: 1px solid rgb(var(--land-hair) / var(--land-hair-a));
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: var(--land-shadow);
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+.land-card:hover,
+.land-card:focus-within {
+  border-color: rgb(var(--land-amber) / 0.85);
+  box-shadow:
+    0 0 0 1px rgb(var(--land-amber) / 0.3),
+    0 0 38px -8px rgb(var(--land-amber) / 0.5),
+    var(--land-shadow);
+}
+
+/* Field styling inside the public card (amber focus, no console cyan) */
+.land-field {
+  background: rgb(var(--land-hair) / 0.05);
+  border: 1px solid rgb(var(--land-hair) / var(--land-hair-a));
+  color: rgb(var(--text-primary));
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+:root[data-theme="light"] .land-field {
+  background: rgb(var(--text-primary) / 0.035);
+}
+.land-field:focus,
+.land-field:focus-visible {
+  outline: none;
+  border-color: rgb(var(--land-amber) / 0.75);
+  box-shadow: 0 0 0 3px rgb(var(--land-amber) / 0.16);
+}
+
+.land-chip {
+  border: 1px solid rgb(var(--land-hair) / var(--land-hair-a));
+  transition: border-color 0.18s ease, color 0.18s ease, background-color 0.18s ease;
+}
+.land-chip:hover {
+  border-color: rgb(var(--land-amber) / 0.7);
+  color: rgb(var(--land-amber));
+  background: rgb(var(--land-amber) / 0.1);
+}
+
+.land-btn-primary {
+  background: rgb(var(--land-amber));
+  color: #fff;
+  transition: filter 0.18s ease, transform 0.18s ease;
+}
+.land-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.land-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.land-btn-ghost {
+  border: 1px solid rgb(var(--land-hair) / var(--land-hair-a));
+  color: rgb(var(--text-primary));
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+.land-btn-ghost:hover:not(:disabled) {
+  border-color: rgb(var(--land-amber) / 0.7);
+  color: rgb(var(--land-amber));
+}
+.land-focus:focus-visible {
+  outline: 2px solid rgb(var(--land-amber) / 0.75);
+  outline-offset: 2px;
+}
+
+/* Report print */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .print-surface {
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
