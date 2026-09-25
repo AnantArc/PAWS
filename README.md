@@ -10,6 +10,9 @@ auditable, timestamped picture of where survivors are most likely located.
 Production-grade: real authentication with roles, honest data states everywhere, audited commands, mission
 replay, a field-rescuer QR link, and a documented Supabase deployment path.
 
+<img width="1600" height="733" alt="Flowchart" src="https://github.com/user-attachments/assets/6d89826d-9736-4e9b-8a00-44168617a911" />
+
+
 ---
 
 ## Quickstart (localhost, zero configuration)
