@@ -9,7 +9,7 @@ import { DETECT_RANGE_M, detectionConfidence, nearestSurvivor } from "@/lib/worl
  *  - simulated : the camera only sees a person when the robot is actually
  *                within sensor range of one of the world model's survivor
  *                positions (src/lib/world.ts) — the same person the thermal,
- *                acoustic and PIR channels are reacting to in that tick
+ *                acoustic channels are reacting to in that tick
  *  - server    : POSTs the frame to DETECTION_SERVICE_URL and expects
  *                { detections: [{ label, confidence, bbox }] }
  * Swap by env — no other code changes. (On-device FOMO remains finale roadmap.)
@@ -28,7 +28,7 @@ export interface DetectionProvider {
  * frame only while the robot is within DETECT_RANGE_M of a survivor position,
  * and the reported confidence follows the geometry (closer = more confident).
  * Because the survivor list lives in the shared world model, this detection is
- * automatically in step with the simulator's sound / thermal / PIR reactions.
+ * automatically in step with the simulator's sound / thermal reactions.
  */
 export class SimulatedDetectionProvider implements DetectionProvider {
   readonly name = "simulated" as const;

@@ -88,15 +88,6 @@ export interface ClimateReading {
   heardAt: number;
 }
 
-/** PIR motion (v2.9). */
-export interface PirReading {
-  state: "MOTION" | "IDLE";
-  total: number; // rising edges since boot
-  perMin: number; // events in last 60 s
-  lastSecs: number; // -1 = never triggered
-  heardAt: number;
-}
-
 /** YOLO vision state from the ESP32-CAM detector (v2.9). */
 export interface VisionReading {
   human: boolean; // true = person in frame (label "person"), false = clear ("none")
@@ -263,7 +254,6 @@ export interface SensorSnapshot {
   detection?: Detection;
   vision?: Detection;
   climate?: ClimateReading;
-  pir?: PirReading;
 }
 
 export interface FeedEvent {
@@ -311,7 +301,6 @@ export interface ConsoleState {
     position: PositionReading | null;
     camera: CameraFrame | null;
     climate: ClimateReading | null;
-    pir: PirReading | null;
     vision: VisionReading | null;
   };
   /** Display rebase: every absolute coordinate is rendered as (value − rebase).

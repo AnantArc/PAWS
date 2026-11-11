@@ -44,7 +44,6 @@ export class MemoryStore implements ConsoleStore {
   private provider = getDetectionProvider();
   private camFrame = 0;
   private soundEventAt: number | null = null;
-  private pirEventAt: number | null = null;
   private rebase: { xM: number; yM: number; setAt: number } = { xM: 0, yM: 0, setAt: Date.now() };
   private missionCount = 0;
   private sim: Simulator | null = null;
@@ -81,7 +80,6 @@ export class MemoryStore implements ConsoleStore {
         position: null,
         camera: null,
         climate: null,
-        pir: null,
         vision: null,
       },
       history: { sound: [], gas: [], thermalObj: [], distance: [], humidity: [] },
@@ -164,18 +162,6 @@ export class MemoryStore implements ConsoleStore {
     if (sensor.distance) next.sensors.distance = { ...sensor.distance };
     if (sensor.tilt) next.sensors.tilt = { ...sensor.tilt };
     if (sensor.climate) next.sensors.climate = { ...sensor.climate };
-    if (sensor.pir) next.sensors.pir = { ...sensor.pir };
-
-    // PIR live event (v2.9): MOTION transition → operator-facing note
-    if (sensor.pir && sensor.pir.state === "MOTION" && Date.now() - (this.pirEventAt ?? 0) > 25000) {
-      this.pirEventAt = Date.now();
-      this.pushEvent(
-        "detection",
-        "warn",
-        `Motion detected · ${sensor.pir.perMin}/min, total ${sensor.pir.total} since boot${sensor.pir.lastSecs >= 0 ? ` · last trigger ${sensor.pir.lastSecs} s ago` : ""}`
-      );
-    }
-
     // rolling true-history for the live charts (newest last)
     const push = (arr: number[], v: number | undefined) =>
       v === undefined ? arr : [...arr, v].slice(-SNAPSHOT_CAPS.history);
@@ -414,7 +400,6 @@ export class MemoryStore implements ConsoleStore {
         ...this.state.sensors,
         position: null,
         vision: null,
-        pir: null,
         climate: null,
       },
     };

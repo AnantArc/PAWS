@@ -4,7 +4,7 @@
  * The demo floor is not random noise. It has fixed survivor positions, a gas
  * pocket and debris the robot squeezes past. BOTH the sensor simulator and
  * the camera detection provider read this file, so the person the camera sees
- * is the SAME person the thermopile feels, the microphone hears and the PIR
+ * is the SAME person the thermopile feels and the microphone hears
  * detects — every signal rises and falls together, from one physical cause.
  *
  * Coordinates are metres in the same frame as the robot's odometry

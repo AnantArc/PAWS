@@ -381,48 +381,6 @@ export function ClimatePanel({ state }: { state: ConsoleState }) {
   );
 }
 
-/* ---------------------------------------------------------------------- PIR */
-export function PirPanel({ state }: { state: ConsoleState }) {
-  const now = state.now;
-  const s = state.sensors.pir;
-  return (
-    <Card
-      title="Motion · PIR"
-      sub="Body Detection"
-      className="flex h-full flex-col shadow-sm"
-      bodyClass="flex min-h-0 flex-1 flex-col p-3.5"
-      right={s ? <WordChip word={s.state} tone={s.state === "MOTION" ? "warn" : "muted"} /> : <Fresh s={s} now={now} live />}
-    >
-      {s ? (
-        <>
-          <Big value={s.total.toString()} unit="Total Triggers" />
-          <Stats
-            items={[
-              ["Rate (60s)", `${s.perMin}/min`],
-              ["Last Trigger", s.lastSecs < 0 ? "never" : `${s.lastSecs}s ago`],
-              ["State", s.state ?? "IDLE"],
-              ["Read", fmtAgo(s.heardAt, now)],
-            ]}
-          />
-          <Note>
-            <span>{s.state === "MOTION" ? <span className="font-bold text-warn">motion · warm body in range</span> : "idle · scanning"}</span>
-          </Note>
-          <Foot>
-            <div className="flex h-full items-end gap-1.5">
-              {Array.from({ length: 20 }).map((_, i) => {
-                const active = i >= 15 && s.state === "MOTION";
-                return <div key={i} className="flex-1 rounded-sm bg-surface-2" style={{ height: active ? "72%" : "26%" }} />;
-              })}
-            </div>
-          </Foot>
-        </>
-      ) : (
-        <Empty label="PIR offline" />
-      )}
-    </Card>
-  );
-}
-
 /* ------------------------------------------------------------------ VISION */
 export function VisionPanel({ state }: { state: ConsoleState }) {
   const now = state.now;

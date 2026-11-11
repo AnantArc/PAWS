@@ -8,7 +8,7 @@ import { DETECT_RANGE_M, GAS_POCKET, OBSTACLES, distanceM, nearestSurvivor } fro
  * ROBOT SIMULATOR (demo mode only)
  * ---------------------------------
  * Pretends to be PAWS: walks a continuous loop around an 8 m × 7 m floor,
- * streams sound dB / gas ppm / thermal / sonar / IMU / DHT climate / PIR /
+ * streams sound dB / gas ppm / thermal / sonar / IMU / DHT climate /
  * odometry through the EXACT same ingest path the real firmware uses, and
  * answers operator commands (E-STOP, resume, re-anchor) with a believable
  * delivery/ack lifecycle.
@@ -16,7 +16,7 @@ import { DETECT_RANGE_M, GAS_POCKET, OBSTACLES, distanceM, nearestSurvivor } fro
  * WORLD-DRIVEN, NOT CLOCK-DRIVEN: every reading is a function of where the
  * robot actually is on the floor (src/lib/world.ts). When it walks within
  * range of a survivor, the camera sees a person, the microphone hears them,
- * the thermopile picks up body heat and the PIR trips — all in the same tick,
+ * the thermopile picks up body heat — all in the same tick,
  * because they are all reacting to the same physical cause. Gas rises as the
  * robot enters the leak plume and clears as it leaves; the forward ranger dips
  * at the debris. Walk away and every signal decays honestly.
@@ -51,8 +51,6 @@ export class Simulator {
   private frameId = 0;
   private lastFrameTick = 0;
   private mode = "search";
-  private pirEvents = 0;
-  private lastPir = -1;
   /** Survivor currently inside sensor range + ticks since the robot arrived. */
   private inRange = false;
   private encounterTick = 0;
@@ -92,7 +90,7 @@ export class Simulator {
 
     // ---- World-driven survival scenario ------------------------------------
     // Every channel below reacts to WHERE THE ROBOT ACTUALLY IS. One person
-    // inside sensor range drives camera + microphone + thermopile + PIR in the
+    // inside sensor range drives camera + microphone + thermopile in the
     // same tick, so corroboration in the fusion score is real, not staged.
     const here = { xM: this.pos.x, yM: this.pos.y };
     const near = nearestSurvivor(here);
@@ -101,8 +99,6 @@ export class Simulator {
     if (inRange && !this.inRange) {
       // Arrival: the person calls out and starts moving.
       this.encounterTick = 0;
-      this.pirEvents += 2;
-      this.lastPir = 0;
       this.soundSpike(0.82, 84);
     }
     if (inRange) {
@@ -110,7 +106,6 @@ export class Simulator {
       if (this.encounterTick % 3 === 0) this.soundSpike(0.76, 78); // repeated calls for help
     }
     this.inRange = inRange;
-    if (this.lastPir >= 0) this.lastPir += 1;
 
     // Sensors
     const payload = await this.buildPayload();
@@ -245,13 +240,6 @@ export class Simulator {
         tempC: Math.round((27.4 + Math.sin(this.tickCount / 9) * 0.4 + (Math.random() - 0.5) * 0.3) * 10) / 10,
         humidityPct: Math.round((61 + Math.sin(this.tickCount / 12) * 2 + (Math.random() - 0.5) * 1.5) * 10) / 10,
         band: "COMFORT",
-        heardAt: now,
-      },
-      pir: {
-        state: this.lastPir >= 0 && this.lastPir < 6 ? "MOTION" : "IDLE",
-        total: this.pirEvents,
-        perMin: Math.min(8, this.pirEvents),
-        lastSecs: this.lastPir,
         heardAt: now,
       },
       position: {

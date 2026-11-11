@@ -63,15 +63,6 @@ export const ClimateReadingSchema = z.object({
   band: z.string().max(12).optional(),
   heardAt: ts,
 });
-
-export const PirReadingSchema = z.object({
-  state: z.enum(["MOTION", "IDLE"]),
-  total: z.number().int().min(0),
-  perMin: z.number().int().min(0),
-  lastSecs: z.number().int().min(-1),
-  heardAt: ts,
-});
-
 export const PositionReadingSchema = z.object({
   xM: z.number().min(-1000).max(1000),
   yM: z.number().min(-1000).max(1000),
@@ -95,7 +86,6 @@ export const TelemetryPayloadSchema = z.object({
   distance: DistanceReadingSchema.optional(),
   tilt: TiltReadingSchema.optional(),
   climate: ClimateReadingSchema.optional(), // v2.9 DHT11
-  pir: PirReadingSchema.optional(), // v2.9
   position: PositionReadingSchema.optional(),
   camera: z
     .object({

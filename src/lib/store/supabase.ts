@@ -11,7 +11,6 @@ import type {
   FeedEvent,
   GasReading,
   Mission,
-  PirReading,
   PositionReading,
   ScoreResult,
   ScoreWeights,
@@ -60,7 +59,6 @@ export class SupabaseStore implements ConsoleStore {
     missionId: "",
     sensorsTs: 0,
     lastSoundEventAt: 0,
-    lastPirAt: 0,
     alertCooldown: {} as Partial<Record<AlertKind, number>>,
     history: { sound: [] as number[], gas: [] as number[], thermalObj: [] as number[], distance: [] as number[], humidity: [] as number[] },
     trail: [] as TrailPoint[],
@@ -118,7 +116,6 @@ export class SupabaseStore implements ConsoleStore {
         position: null,
         camera: null,
         climate: null,
-        pir: null,
         vision: null,
       },
       history: { sound: [], gas: [], thermalObj: [], distance: [], humidity: [] },
@@ -335,7 +332,6 @@ export class SupabaseStore implements ConsoleStore {
     const laserRaw = (s.laser ?? null) as Record<string, unknown> | null;
     const imuRaw = (s.imu ?? null) as Record<string, unknown> | null;
     const climateRaw = (s.climate ?? null) as Record<string, unknown> | null;
-    const pirRaw = (s.pir ?? null) as Record<string, unknown> | null;
     const odomRaw = (s.odom ?? null) as Record<string, unknown> | null;
     const heard = (r: Record<string, unknown> | null) => Number(r?.heardAt ?? updatedAt);
 
@@ -408,17 +404,6 @@ export class SupabaseStore implements ConsoleStore {
           heardAt: heard(climateRaw),
         }
       : null;
-
-    const pir: PirReading | null = pirRaw
-      ? {
-          state: String(pirRaw.state ?? "IDLE") === "MOTION" ? "MOTION" : "IDLE",
-          total: Number(pirRaw.total ?? 0),
-          perMin: Number(pirRaw.perMin ?? 0),
-          lastSecs: Number(pirRaw.lastSecs ?? -1),
-          heardAt: heard(pirRaw),
-        }
-      : null;
-
     let position: PositionReading | null = null;
     if (odomRaw && odomRaw.xCm != null) {
       const started = new Date(String(missionRow.started_at ?? Date.now())).getTime();
@@ -443,7 +428,6 @@ export class SupabaseStore implements ConsoleStore {
       position,
       camera: null, // stills/model frames don't stream to the DB; the panel live-previews via CAM_URL
       climate,
-      pir,
       vision: null, // filled by deriveVision
     };
   }
@@ -506,16 +490,6 @@ export class SupabaseStore implements ConsoleStore {
         kind: "obstacle",
         severity: "info",
         message: `Obstacle ahead — ${s.distance.cm != null ? `${Math.round(s.distance.cm)} cm (${s.distance.state ?? "STOP"})` : `${Math.round(s.distance.mm)} mm laser`}`,
-      });
-    }
-    if (s.pir && s.pir.state === "MOTION" && hit("person_detected", 25_000)) {
-      events.push({
-        id: uid("evt"),
-        ts: now,
-        kind: "detection",
-        level: "warn",
-        text: `Motion detected · ${s.pir.perMin}/min, ${s.pir.total} total since boot${s.pir.lastSecs >= 0 ? ` · last ${s.pir.lastSecs} s ago` : ""}`,
-        snapshot: { pir: s.pir },
       });
     }
     return { events, alerts };

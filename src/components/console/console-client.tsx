@@ -17,7 +17,6 @@ import {
   DistancePanel,
   TiltPanel,
   ClimatePanel,
-  PirPanel,
   VisionPanel,
   LinkPanel,
 } from "./panels";
@@ -240,15 +239,12 @@ export function ConsoleClient({ user }: { user: SessionUser }) {
           </div>
         </div>
 
-        {/* ROW 3 — motion / vision / link */}
+        {/* ROW 3 — vision / robot link */}
         <div className="grid grid-cols-12 gap-3.5">
-          <div className="col-span-6 md:col-span-4 xl:col-span-3 xl:h-[270px]">
-            <PirPanel state={s} />
-          </div>
-          <div className="col-span-6 md:col-span-8 xl:col-span-5 xl:h-[270px]">
+          <div className="col-span-12 md:col-span-8 xl:col-span-8 xl:h-[270px]">
             <VisionPanel state={s} />
           </div>
-          <div className="col-span-12 xl:col-span-4 xl:h-[270px]">
+          <div className="col-span-12 md:col-span-4 xl:col-span-4 xl:h-[270px]">
             <LinkPanel state={s} />
           </div>
         </div>
