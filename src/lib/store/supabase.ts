@@ -36,7 +36,7 @@ import { uid } from "@/lib/utils";
  *  - The ESP32-CAM detector writes `person`/`none` rows into `detections`
  *    (newest row = current vision state).
  *  - This store READS: latest running mission → mission_state (sensors) →
- *    detections (vision) → events/commands/alerts/weights. It derives the
+ *    detections (vision) → events/commands/alert/weights. It derives the
  *    rolling chart history, trail, fusion scores, sound events and alerts
  *    CLIENT-SIDE (in this server process) from the live sensor map.
  *  - Realtime pushes: telemetry INSERT+UPDATE, mission_state UPDATE,
