@@ -324,4 +324,17 @@ export interface ConsoleState {
   weights: ScoreWeights;
   simulated: boolean; // true when data comes from the robot simulator
   now: number;
+  /**
+   * Live firmware/power telemetry from the ESP32's single `telemetry` row
+   * (id = 1). Present in supabase mode once the robot has uploaded at least
+   * once; null in demo mode or before the first upload.
+   */
+  firmware?: {
+    batteryPct: number | null;
+    batteryVoltage: number | null;
+    estRuntimeMin: number | null;
+    errorText: string; // "NONE" or "DHT_FAIL; LIDAR_FAIL; ..."
+    gaitState: number | null; // 0=STOP 1=FWD 2=BWD 3=TURN_L 4=TURN_R
+    updatedAt: number; // epoch ms of the telemetry row (ts column)
+  } | null;
 }

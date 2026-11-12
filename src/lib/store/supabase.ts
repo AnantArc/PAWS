@@ -129,6 +129,7 @@ export class SupabaseStore implements ConsoleStore {
       commands: [],
       weights: { ...DEFAULT_WEIGHTS },
       simulated: false,
+      firmware: null,
       now,
     };
   }
@@ -158,10 +159,13 @@ export class SupabaseStore implements ConsoleStore {
       ({ data: missions } = await this.db.from("missions").select("*").order("started_at", { ascending: false }).limit(1));
     }
     const missionRow = missions?.[0];
-    if (!missionRow) return null;
+    const missionId = missionRow?.id as string | undefined;
 
-    const [stRow, detRows, evRows, cmdRows, alrRows, wRow] = await Promise.all([
-      this.db.from("mission_state").select("*").eq("mission_id", missionRow.id).limit(1),
+    const [stRow, telRow, detRows, evRows, cmdRows, alrRows, wRow] = await Promise.all([
+      missionId
+        ? this.db.from("mission_state").select("*").eq("mission_id", missionId).limit(1)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      this.db.from("telemetry").select("*").eq("id", 1).limit(1),
       this.db.from("detections").select("*").order("ts", { ascending: false }).limit(100),
       this.db.from("events").select("*").order("ts", { ascending: false }).limit(50),
       this.db.from("commands").select("*").order("issued_at", { ascending: false }).limit(50),
@@ -171,13 +175,18 @@ export class SupabaseStore implements ConsoleStore {
 
     const now = Date.now();
     const st = stRow?.data?.[0];
-    const sensorMap = (st?.sensors as Record<string, unknown>) ?? {};
+    // The ESP32 upserts a single live row (telemetry id=1) every 2 s — when it
+    // exists it is the sensor source of truth; mission_state is the legacy path.
+    const fwRow = telRow?.data?.[0] as Record<string, unknown> | undefined;
+    const sensorMap = fwRow ? firmwareSensorMap(fwRow) : ((st?.sensors as Record<string, unknown>) ?? {});
     const updatedAt = st?.updated_at ? new Date(String(st.updated_at)).getTime() : 0;
-    const link = !updatedAt ? "offline" : now - updatedAt < 12000 ? "online" : now - updatedAt < 60000 ? "delayed" : "offline";
+    const lastSeen = fwRow?.ts != null ? Number(fwRow.ts) : updatedAt;
+    const link = !lastSeen ? "offline" : now - lastSeen < 12000 ? "online" : now - lastSeen < 60000 ? "delayed" : "offline";
 
     // ==== LOCAL DERIVATION (new mission → reset caches) ====
-    if (this.cache.missionId !== missionRow.id) {
-      this.cache.missionId = missionRow.id;
+    const mid = missionId ?? "";
+    if (this.cache.missionId !== mid) {
+      this.cache.missionId = mid;
       this.cache.history = { sound: [], gas: [], thermalObj: [], distance: [], humidity: [] };
       this.cache.trail = [];
       this.cache.scoreHistory = [];
@@ -188,7 +197,7 @@ export class SupabaseStore implements ConsoleStore {
       this.cache.rebase = { xM: 0, yM: 0, setAt: now };
     }
 
-    const sensors = this.mapSensors(sensorMap, missionRow, updatedAt, now);
+    const sensors = this.mapSensors(sensorMap, missionRow ?? { started_at: new Date(now).toISOString() }, updatedAt, now);
     const detections = (detRows?.data ?? []).map(mapDetection);
     const vision = this.deriveVision(detections, now);
 
@@ -213,30 +222,10 @@ export class SupabaseStore implements ConsoleStore {
       this.cache.alerts = [...sensorEvent.alerts, ...this.cache.alerts].slice(0, CAPS.alerts);
     }
 
-    // vision: person detected → detection alert (once per sighting)
-    if (vision?.human && vision.at > this.cache.lastTrailTs - 1) {
-      const key = "person_detected" as AlertKind;
-      if (now - (this.cache.alertCooldown[key] ?? 0) > 30_000) {
-        this.cache.alertCooldown[key] = now;
-        const personAlert: Alert = {
-          id: uid("alr"),
-          ts: now,
-          kind: key,
-          severity: "warn",
-          message: `Person detected · confidence ${Math.round(vision.confidence * 100)}%${sensors.position ? ` at (${sensors.position.xM.toFixed(1)}, ${sensors.position.yM.toFixed(1)}) m from origin` : " — check camera"}`,
-        };
-        this.cache.alerts = [personAlert, ...this.cache.alerts].slice(0, CAPS.alerts);
-        const personEvent: FeedEvent = {
-          id: uid("evt"),
-          ts: now,
-          kind: "detection",
-          level: "success",
-          text: `Person detected · confidence ${Math.round(vision.confidence * 100)}%`,
-          snapshot: { position: sensors.position ?? undefined },
-        };
-        this.cache.events = [personEvent, ...this.cache.events].slice(0, CAPS.events);
-      }
-    }
+    // Vision readings come straight from the ESP32-CAM `detections` rows and
+    // only drive the Vision panel (sensors.vision). The activity feed shows
+    // real DB events/alerts exclusively — no synthesized "person detected".
+    sensors.vision = vision;
 
     // fusion + trail (local derivation, same engine as demo mode)
     const score = computeScores({
@@ -276,20 +265,22 @@ export class SupabaseStore implements ConsoleStore {
       ].slice(-CAPS.trail);
     }
 
-    const m: Mission = {
-      id: missionRow.id,
-      name: missionRow.name,
-      status: missionRow.status,
-      startedAt: new Date(missionRow.started_at).getTime(),
-      endedAt: missionRow.ended_at ? new Date(missionRow.ended_at).getTime() : undefined,
-      origin: (missionRow.origin as Mission["origin"]) ?? { xM: 0, yM: 0, setAt: new Date(missionRow.started_at).getTime() },
-      robotId: (missionRow.robot_id as string | undefined) ?? undefined,
-    };
+    const m: Mission = missionRow
+      ? {
+          id: missionRow.id,
+          name: missionRow.name,
+          status: missionRow.status,
+          startedAt: new Date(missionRow.started_at).getTime(),
+          endedAt: missionRow.ended_at ? new Date(missionRow.ended_at).getTime() : undefined,
+          origin: (missionRow.origin as Mission["origin"]) ?? { xM: 0, yM: 0, setAt: new Date(missionRow.started_at).getTime() },
+          robotId: (missionRow.robot_id as string | undefined) ?? undefined,
+        }
+      : { id: "", name: "—", status: "idle", startedAt: now, origin: { xM: 0, yM: 0, setAt: now } };
 
     return {
       mode: "supabase",
       mission: m,
-      device: { deviceId: "paws-01", link, lastSeenAt: updatedAt },
+      device: { deviceId: "paws-01", link, lastSeenAt: lastSeen },
       sensors,
       history: this.cache.history,
       rebase: this.cache.rebase,
@@ -314,6 +305,7 @@ export class SupabaseStore implements ConsoleStore {
           }
         : { ...DEFAULT_WEIGHTS },
       simulated: false,
+      firmware: fwRow ? mapFirmware(fwRow) : null,
       now,
     };
   }
@@ -432,10 +424,12 @@ export class SupabaseStore implements ConsoleStore {
     };
   }
 
-  /** Newest detections row = current state; person rows = detection history. */
+  /** Newest FRESH detections row (ESP32-CAM) = current vision state. Stale
+   *  rows are ignored so old "person" rows never appear as a live sighting. */
   private deriveVision(detections: Detection[], now: number): VisionReading | null {
     if (detections.length === 0) return null;
     const latest = detections[0]; // ordered desc by ts
+    if (now - latest.ts > 90_000) return null; // camera feed stale — nothing live
     const person = detections.filter((d) => d.label === "person" && now - d.ts < 5 * 60_000)[0];
     return {
       human: latest.label === "person",
@@ -506,6 +500,7 @@ export class SupabaseStore implements ConsoleStore {
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "telemetry" }, () => this.broadcast())
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "mission_state" }, () => this.broadcast())
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "detections" }, () => this.broadcast())
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "alerts" }, () => this.broadcast())
         .subscribe();
     }
 
@@ -795,5 +790,68 @@ function mapCommand(r: Record<string, unknown>): Command {
     issuedAt: typeof r.issued_at === "number" ? r.issued_at : new Date(String(r.issued_at)).getTime(),
     stages: (r.stages as Command["stages"]) ?? [{ stage: "queued", at: Date.now() }],
     current: (r.current as CommandStageName) ?? "queued",
+  };
+}
+
+/**
+ * ESP32 firmware telemetry row (single live row id=1, flat columns) →
+ * mission_state-style sensor map consumed by mapSensors().
+ * The firmware sends -1000 for failed DHT reads — those become absent keys.
+ */
+function firmwareSensorMap(r: Record<string, unknown>): Record<string, unknown> {
+  const heardAt = typeof r.ts === "number" ? r.ts : Date.now();
+  const num = (k: string) => (r[k] != null ? Number(r[k]) : null);
+  const map: Record<string, unknown> = {};
+
+  const temp = num("temperature_c");
+  const hum = num("humidity_pct");
+  if (temp != null && temp > -999 && hum != null && hum > -999) {
+    map.climate = { tempC: temp, humidityPct: hum, heardAt };
+  }
+
+  const laser = num("laser_distance_mm");
+  if (laser != null && laser > 0) map.laser = { mm: laser, state: "IN RANGE", heardAt };
+
+  const ultra = num("ultrasonic_cm");
+  if (ultra != null && ultra > 0) {
+    map.distance = { cm: ultra, state: ultra < 20 ? "STOP" : ultra < 60 ? "NEAR" : "CLEAR", heardAt };
+  }
+
+  const obj = num("object_temp_c");
+  const amb = num("ambient_temp_c");
+  if (obj != null || amb != null) {
+    const objectC = obj ?? 0;
+    const ambientC = amb ?? 0;
+    map.thermal = {
+      objectC,
+      ambientC,
+      deltaC: objectC - ambientC,
+      zone: objectC > 55 ? "FIRE RISK" : objectC > 37 ? "HUMAN HEAT" : "NORMAL",
+      heardAt,
+    };
+  }
+
+  const mq2 = num("mq2_raw");
+  if (mq2 != null) map.gas = { adc: mq2, ppm: 0, heardAt };
+
+  const mic = num("mic_raw");
+  if (mic != null) {
+    const amp = Math.min(1, mic / 4095);
+    map.sound = { amp, baseline: 0.07, peak: amp, heardAt };
+  }
+
+  return map;
+}
+
+/** Firmware row → console firmware/power block (battery, errors, gait). */
+function mapFirmware(r: Record<string, unknown>): NonNullable<ConsoleState["firmware"]> {
+  const num = (k: string) => (r[k] != null ? Number(r[k]) : null);
+  return {
+    batteryPct: num("battery_pct"),
+    batteryVoltage: num("battery_voltage"),
+    estRuntimeMin: num("est_runtime_min"),
+    errorText: String(r.error_text ?? "NONE"),
+    gaitState: num("gait_state"),
+    updatedAt: typeof r.ts === "number" ? r.ts : Date.now(),
   };
 }

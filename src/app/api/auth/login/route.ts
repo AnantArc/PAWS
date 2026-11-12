@@ -73,7 +73,30 @@ export async function POST(req: Request) {
   });
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error || !data.user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+  if (error || !data.user) {
+    // Demo accounts must always work, even if they were never created in
+    // Supabase Auth (schema.sql section 7 is optional). Issue the same HMAC
+    // session as local mode; mode stays "supabase" so the rest of the app
+    // behaves exactly as in live mode.
+    const demo = DEMO_USERS.find((u) => u.email === email.toLowerCase() && u.password === password);
+    if (!demo) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    const session: SessionUser = {
+      name: operatorName?.trim() || demo.name,
+      email: demo.email,
+      role: demo.role,
+      mode: "supabase",
+      robotId: chosenRobot,
+    };
+    const res = NextResponse.json({ ok: true, role: demo.role, name: session.name, robotId: session.robotId });
+    res.cookies.set(SESSION_COOKIE_NAME, signSession(session), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 12,
+      path: "/",
+    });
+    return res;
+  }
   const session: SessionUser = {
     name: operatorName?.trim() || (data.user.user_metadata?.name as string) || email.split("@")[0],
     email,

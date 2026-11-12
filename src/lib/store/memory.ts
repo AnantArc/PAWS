@@ -47,6 +47,7 @@ export class MemoryStore implements ConsoleStore {
   private rebase: { xM: number; yM: number; setAt: number } = { xM: 0, yM: 0, setAt: Date.now() };
   private missionCount = 0;
   private sim: Simulator | null = null;
+  private demoStartedAt = Date.now();
 
   /** Process-level counters: survive separate route-handler module graphs. */
   private static stats(): { ingestCount: number; lastIngestAt: number | null; startedAt: number } {
@@ -93,6 +94,7 @@ export class MemoryStore implements ConsoleStore {
       commands: [],
       weights: { ...DEFAULT_WEIGHTS },
       simulated: true,
+      firmware: this.demoFirmware(now),
       now,
     };
     this.pushEvent("system", "info", `Mission "${missionName}" started — PAWS is walking.`);
@@ -114,7 +116,7 @@ export class MemoryStore implements ConsoleStore {
 
   // ---------------------------------------------------------------- basics
   async getState(): Promise<ConsoleState> {
-    return { ...this.state, now: Date.now() };
+    return { ...this.state, firmware: this.demoFirmware(Date.now()), now: Date.now() };
   }
 
   subscribe(fn: (s: ConsoleState) => void): () => void {
@@ -123,7 +125,7 @@ export class MemoryStore implements ConsoleStore {
   }
 
   private emit() {
-    const snap: ConsoleState = { ...this.state, now: Date.now() };
+    const snap: ConsoleState = { ...this.state, firmware: this.demoFirmware(Date.now()), now: Date.now() };
     for (const fn of this.listeners) {
       try {
         fn(snap);
@@ -131,6 +133,23 @@ export class MemoryStore implements ConsoleStore {
         /* listener errors must never break the store */
       }
     }
+  }
+
+  /**
+   * Demo-mode firmware block: high battery (starts 79%, drifts down 1%/2 min,
+   * floor 74% — never more than 5% over the whole demo), no errors, idle gait.
+   * Real mode reads the ESP32's telemetry row instead (SupabaseStore).
+   */
+  private demoFirmware(now: number): NonNullable<ConsoleState["firmware"]> {
+    const pct = Math.max(74, 79 - Math.floor((now - this.demoStartedAt) / 120_000));
+    return {
+      batteryPct: pct,
+      batteryVoltage: Math.round((8.4 + (pct / 100) * (12.6 - 8.4)) * 100) / 100,
+      estRuntimeMin: Math.round((pct * 180) / 100),
+      errorText: "NONE",
+      gaitState: 0,
+      updatedAt: now,
+    };
   }
 
   health() {

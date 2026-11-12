@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, AlertTriangle } from "lucide-react";
 import type { ConsoleState, Command } from "@/lib/types";
 import type { SessionUser } from "@/lib/auth";
 import { useConsoleState } from "./use-console-state";
@@ -20,6 +20,7 @@ import {
   VisionPanel,
   LinkPanel,
 } from "./panels";
+import { FirmwarePanel } from "./firmware-panel";
 import { CommandBar } from "./command-bar";
 import { FeedPanel } from "./feed";
 import { RobotMap } from "@/components/map";
@@ -32,6 +33,12 @@ export function ConsoleClient({ user }: { user: SessionUser }) {
   const router = useRouter();
   const [mapMode, setMapMode] = useState<"score" | "gas">("score");
   const [toast, setToast] = useState<string | null>(null);
+  // Critical low-battery popup — REAL mode only, triggers at <= 20%, OK dismisses.
+  const [lowBatDismissed, setLowBatDismissed] = useState(false);
+  const lowBat = !state?.simulated && state?.firmware?.batteryPct != null && (state.firmware.batteryPct ?? 100) <= 20;
+  useEffect(() => {
+    if (!lowBat) setLowBatDismissed(false); // re-arm if the battery recovers above 20%
+  }, [lowBat]);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -239,13 +246,16 @@ export function ConsoleClient({ user }: { user: SessionUser }) {
           </div>
         </div>
 
-        {/* ROW 3 — vision / robot link */}
+        {/* ROW 3 — robot link | vision (middle, reduced) | system errors & battery */}
         <div className="grid grid-cols-12 gap-3.5">
-          <div className="col-span-12 md:col-span-8 xl:col-span-8 xl:h-[270px]">
+          <div className="col-span-12 md:col-span-4 xl:col-span-3 xl:h-[270px]">
+            <LinkPanel state={s} />
+          </div>
+          <div className="col-span-12 md:col-span-8 xl:col-span-5 xl:h-[270px]">
             <VisionPanel state={s} />
           </div>
-          <div className="col-span-12 md:col-span-4 xl:col-span-4 xl:h-[270px]">
-            <LinkPanel state={s} />
+          <div className="col-span-12 md:col-span-12 xl:col-span-4 xl:h-[270px]">
+            <FirmwarePanel state={s} />
           </div>
         </div>
 
@@ -258,6 +268,26 @@ export function ConsoleClient({ user }: { user: SessionUser }) {
       </main>
 
       <QrShareButton role={user.role} missionId={s.mission.id} />
+
+      {lowBat && !lowBatDismissed && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-critical/50 bg-surface p-5 shadow-2xl">
+            <div className="flex items-center gap-2 text-critical">
+              <AlertTriangle size={18} />
+              <h3 className="text-[14px] font-bold uppercase tracking-wider">Battery critically low</h3>
+            </div>
+            <p className="mt-2 text-[13px] text-text-muted">
+              PAWS&apos;s battery is at {s.firmware?.batteryPct}% — critically low. The robot will stop its motors soon.
+            </p>
+            <button
+              onClick={() => setLowBatDismissed(true)}
+              className="mt-4 w-full rounded-md bg-critical px-3 py-2 text-[13px] font-bold text-slate-950 transition-opacity hover:opacity-90"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-risein rounded-md border border-border bg-surface px-4 py-2 text-[12.5px] font-medium text-text-primary shadow-2xl">

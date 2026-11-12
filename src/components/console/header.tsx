@@ -5,6 +5,7 @@ import { LogOut, History, Settings2, Activity } from "lucide-react";
 import type { ConsoleState } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/logo";
+import { BatteryIcon, batteryTone } from "@/components/battery-icon";
 import { cn, fmtDuration } from "@/lib/utils";
 
 export function Header({
@@ -17,6 +18,23 @@ export function Header({
   const m = state.mission;
   const elapsed = (m.endedAt ?? state.now) - m.startedAt;
   const link = state.device.link;
+  const batteryPct = state.firmware?.batteryPct ?? null;
+  const batCls = batteryPct == null ? "text-text-muted" : batteryTone(batteryPct);
+
+  /** LIVE ↔ DEMO switch: flips the server store via /api/mode, then reloads. */
+  async function toggleMode() {
+    const target = state.simulated ? "supabase" : "local";
+    try {
+      await fetch("/api/mode", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: target }),
+      });
+    } catch {
+      // network/role error — reload anyway to reflect the current mode
+    }
+    window.location.reload();
+  }
 
   return (
     <header className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2.5 shadow-sm">
@@ -56,6 +74,19 @@ export function Header({
             {link === "online" ? "ONLINE" : link === "delayed" ? "DELAYED" : "OFFLINE"}
           </div>
         </div>
+        <div>
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-text-faint">Battery</div>
+          <div className="flex items-center gap-1.5">
+            {batteryPct != null ? (
+              <>
+                <BatteryIcon pct={batteryPct} />
+                <span className={cn("tnum text-[12.5px] font-semibold", batCls)}>{batteryPct}%</span>
+              </>
+            ) : (
+              <span className="tnum text-[12.5px] font-semibold text-text-muted">—</span>
+            )}
+          </div>
+        </div>
       </div>
 
       <nav className="ml-auto hidden items-center gap-1 lg:flex">
@@ -77,6 +108,11 @@ export function Header({
 
       {/* Right side: Theme Toggle + Logout (mission controls live in the body mission row) */}
       <div className="ml-auto flex items-center gap-2 lg:ml-2">
+        <button
+          onClick={toggleMode}
+          title={`Data mode: ${state.simulated ? "DEMO · local" : "LIVE · supabase"} — click to switch`}
+          className="h-1.5 w-1.5 rounded-full bg-text-faint/25 transition-colors hover:bg-accent"
+        />
         <ThemeToggle />
         <button onClick={onLogout} className="text-text-faint hover:text-critical transition-colors" title="Sign out">
           <LogOut size={16} />

@@ -79,9 +79,6 @@ export function CameraPanel({ state, simulated }: { state: ConsoleState; simulat
     setStreamError(false);
   }
 
-  // Simulated datetime format matching the user's screenshot
-  const dateStr = new Date(now).toISOString().replace("T", " ").substring(0, 19);
-
   return (
     <Card
       title="PAWS-01 CAM — IR NIGHT MODE"
@@ -198,50 +195,10 @@ export function CameraPanel({ state, simulated }: { state: ConsoleState; simulat
               <rect width="600" height="350" fill="url(#irVignette)" />
             </svg>
 
-            {/* Simulated Heatmap Matrix Thumbnail Top-Right (AMG8833 8x8) */}
-            <div className="absolute top-2 right-2 z-10 rounded border border-slate-700/60 bg-black/80 p-1 backdrop-blur-md shadow-md">
-              <div className="text-[8px] font-bold text-slate-400 mb-0.5 text-center uppercase tracking-wider">Thermal 8x8</div>
-              <div className="grid grid-cols-4 gap-0.5 w-12 h-12">
-                {Array.from({ length: 16 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-sm"
-                    style={{
-                      background:
-                        i === 5 || i === 6 || i === 9 || i === 10
-                          ? "#ef4444"
-                          : i === 1 || i === 2 || i === 13 || i === 14
-                            ? "#f59e0b"
-                            : "#1e3a8a",
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* YOLO Bounding Box Overlay matching screenshot */}
-            <div className="absolute left-[38%] top-[45%] w-[32%] h-[35%] z-10 border-2 border-emerald-400 rounded-sm pointer-events-none animate-pulse">
-              <div className="absolute -top-5 left-0 flex items-center gap-1.5 bg-emerald-500/90 text-slate-950 px-1.5 py-0.5 rounded-t text-[10px] font-black">
-                <span>person 0.86</span>
-                <span className="bg-black text-amber-300 px-1 py-0.2 rounded text-[9px]">THERMAL 36.4°C</span>
-              </div>
-            </div>
-
-            {/* Top Text Overlay */}
-            <div className="relative z-10 flex items-center justify-between text-[11px] font-mono font-bold text-slate-200">
-              <div className="flex items-center gap-2 bg-black/60 px-2 py-1 rounded backdrop-blur-sm">
-                <span>{dateStr}</span>
-              </div>
-              <div className="flex items-center gap-2 bg-black/60 px-2 py-1 rounded backdrop-blur-sm mr-16">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>IR 850nm ON</span>
-              </div>
-            </div>
-
             {/* Bottom status strip — read-only (no lamp controls on the console) */}
             <div className="relative z-10 flex items-center justify-end border-t border-slate-800/80 bg-slate-950/90 p-1.5 backdrop-blur-md rounded-b">
               <div className="text-[10px] font-mono text-emerald-400 font-bold hidden sm:block">
-                ● LIVE SYNC: 100%
+                ● LIVE SYNC
               </div>
             </div>
           </div>
