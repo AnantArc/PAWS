@@ -14,6 +14,7 @@ export function useConsoleState() {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const retry = useRef(0);
+  const connectedRef = useRef(false);
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -40,6 +41,7 @@ export function useConsoleState() {
       es = new EventSource("/api/stream");
       es.onopen = () => {
         setConnected(true);
+        connectedRef.current = true;
         retry.current = 0;
       };
       es.onmessage = (ev) => {
@@ -48,6 +50,7 @@ export function useConsoleState() {
           if (!closed) {
             setState(snap);
             setConnected(true);
+            connectedRef.current = true;
           }
         } catch {
           /* skip malformed frames */
@@ -55,17 +58,20 @@ export function useConsoleState() {
       };
       es.onerror = () => {
         setConnected(false);
+        connectedRef.current = false;
       };
     }
 
     void fetchState();
     startStream();
 
-    // Safety fallback poll: ensures live data updates with 0 delay
-    // even during serverless function resets or network reconnects
+    // Safety fallback poll: ONLY runs when SSE stream is disconnected/reconnecting.
+    // When SSE is connected, live stream handles updates with zero delay and zero race conditions.
     pollInterval = setInterval(() => {
-      void fetchState();
-    }, 1500);
+      if (!connectedRef.current && !closed) {
+        void fetchState();
+      }
+    }, 2000);
 
     return () => {
       closed = true;

@@ -33,5 +33,12 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  return NextResponse.json({ ok: true, mode: parsed.data.mode });
+  const res = NextResponse.json({ ok: true, mode: parsed.data.mode });
+  res.cookies.set("paws_mode", parsed.data.mode, {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: false,
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+  });
+  return res;
 }
