@@ -99,7 +99,18 @@ export function SoundPanel({ state }: { state: ConsoleState }) {
       bodyClass="flex min-h-0 flex-1 flex-col p-3.5"
       right={
         s?.band ? (
-          <WordChip word={s.band} tone={s.band === "HAZARD" || s.band === "LOUD" ? "warn" : "muted"} />
+          <WordChip
+            word={s.band}
+            tone={
+              s.band === "HUMAN YELLING" || s.band === "HAZARD" || s.band === "Very Loud Sound" || s.band === "VERY LOUD SOUND"
+                ? "critical"
+                : s.band === "HUMAN LOUD SPEECH" || s.band === "LOUD"
+                  ? "warn"
+                  : s.band.startsWith("HUMAN")
+                    ? "ok"
+                    : "muted"
+            }
+          />
         ) : (
           <Fresh s={s} now={now} live={state.device.link === "online"} />
         )
@@ -117,7 +128,13 @@ export function SoundPanel({ state }: { state: ConsoleState }) {
             ]}
           />
           <Note>
-            <span className="tnum">{fmtDuration(Math.max(0, s.heardAt - state.mission.startedAt))} · amplitude last 60 s</span>
+            {s.band && s.band.startsWith("HUMAN") ? (
+              <span className="font-bold text-ok">{s.band.toLowerCase()} detected · voice band</span>
+            ) : s.band === "Very Loud Sound" || s.band === "VERY LOUD SOUND" ? (
+              <span className="font-bold text-critical">high SPL acoustic disturbance · non-vocal</span>
+            ) : (
+              <span className="tnum">{fmtDuration(Math.max(0, s.heardAt - state.mission.startedAt))} · amplitude last 60 s</span>
+            )}
           </Note>
           <Foot>
             <Sparkline data={state.history.sound.slice(-60)} color={t("accent")} baseline={s.baseline} />

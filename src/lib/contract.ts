@@ -14,7 +14,7 @@ export const SoundReadingSchema = z.object({
   baseline: norm01,
   peak: norm01,
   db: z.number().min(0).max(140).optional(), // v2.9 SPL estimate
-  band: z.string().max(16).optional(), // SILENT/QUIET/MODERATE/LOUD/HAZARD
+  band: z.string().max(32).optional(), // QUIET / HUMAN WHISPER / HUMAN TALK / HUMAN YELLING ...
   peakDb: z.number().min(0).max(140).optional(),
   heardAt: ts,
 });

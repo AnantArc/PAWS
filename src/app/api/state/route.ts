@@ -8,5 +8,9 @@ export async function GET() {
   const user = readSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const state = await getStore().getState();
-  return NextResponse.json(state);
+  return NextResponse.json(state, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    },
+  });
 }

@@ -22,7 +22,7 @@ import type {
 } from "@/lib/types";
 import type { TelemetryPayload } from "@/lib/contract";
 import type { ConsoleStore, MissionTimeline } from "./types";
-import { computeScores, DEFAULT_WEIGHTS } from "@/lib/fusion/engine";
+import { classifySound, computeScores, DEFAULT_WEIGHTS, isHumanHeat } from "@/lib/fusion/engine";
 import { uid } from "@/lib/utils";
 
 /**
@@ -208,12 +208,25 @@ export class SupabaseStore implements ConsoleStore {
     // The ESP32 upserts a single live row (telemetry id=1) every 2 s — when it
     // exists it is the sensor source of truth; mission_state is the legacy path.
     const fwRow = telRow?.data?.[0] as Record<string, unknown> | undefined;
-    const sensorMap = fwRow ? firmwareSensorMap(fwRow, latestHeading) : ((st?.sensors as Record<string, unknown>) ?? {});
     const updatedAt = st?.updated_at ? new Date(String(st.updated_at)).getTime() : 0;
     const mapTs = rawMapPoints[0]?.created_at ? new Date(String(rawMapPoints[0].created_at)).getTime() : 0;
     const fwTs = fwRow?.ts != null ? Number(fwRow.ts) : 0;
-    const lastSeen = Math.max(fwTs, mapTs, updatedAt);
+    const fwRecTs = fwRow?.recorded_at ? new Date(String(fwRow.recorded_at)).getTime() : 0;
+
+    // Determine the freshest live timestamp.
+    // If the ESP32 is actively uploading, mission_state.updated_at is kept fresh by the Supabase trigger.
+    const liveTs = Math.max(
+      (fwTs > 0 && Math.abs(now - fwTs) < 60_000) ? fwTs : 0,
+      (fwRecTs > 0 && Math.abs(now - fwRecTs) < 60_000) ? fwRecTs : 0,
+      (updatedAt > 0 && Math.abs(now - updatedAt) < 60_000) ? updatedAt : 0,
+      (mapTs > 0 && Math.abs(now - mapTs) < 60_000) ? mapTs : 0
+    );
+
+    const effectiveTs = liveTs > 0 ? liveTs : Math.max(fwTs, fwRecTs, updatedAt, mapTs);
+    const lastSeen = effectiveTs;
     const link = !lastSeen ? "offline" : now - lastSeen < 15000 ? "online" : now - lastSeen < 60000 ? "delayed" : "offline";
+
+    const sensorMap = fwRow ? firmwareSensorMap(fwRow, latestHeading, effectiveTs) : ((st?.sensors as Record<string, unknown>) ?? {});
 
     // ==== LOCAL DERIVATION (new mission → reset caches) ====
     const mid = missionId ?? "";
@@ -367,7 +380,7 @@ export class SupabaseStore implements ConsoleStore {
           }
         : { ...DEFAULT_WEIGHTS },
       simulated: false,
-      firmware: mapFirmware(fwRow ?? {}),
+      firmware: mapFirmware(fwRow ?? {}, effectiveTs),
       now,
     };
   }
@@ -558,17 +571,17 @@ export class SupabaseStore implements ConsoleStore {
     if (!this.rtChannel) {
       this.rtChannel = this.db
         .channel("paws-live")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "telemetry" }, () => this.broadcast())
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "telemetry" }, () => this.broadcast())
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "mission_state" }, () => this.broadcast())
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "detections" }, () => this.broadcast())
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "alerts" }, () => this.broadcast())
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "paws_map_points" }, () => this.broadcast())
+        .on("postgres_changes", { event: "*", schema: "public", table: "telemetry" }, () => this.broadcast())
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_state" }, () => this.broadcast())
+        .on("postgres_changes", { event: "*", schema: "public", table: "detections" }, () => this.broadcast())
+        .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, () => this.broadcast())
+        .on("postgres_changes", { event: "*", schema: "public", table: "paws_map_points" }, () => this.broadcast())
+        .on("postgres_changes", { event: "*", schema: "public", table: "fusion_weights" }, () => this.broadcast())
         .subscribe();
     }
 
     if (!this.pollTimer) {
-      this.pollTimer = setInterval(() => void this.broadcast(), 1500);
+      this.pollTimer = setInterval(() => void this.broadcast(), 1000);
     }
 
     return () => {
@@ -587,16 +600,29 @@ export class SupabaseStore implements ConsoleStore {
   }
 
   private broadcasting = false;
+  private pendingBroadcast = false;
+
   private broadcast(): void {
-    if (this.broadcasting) return;
+    if (this.broadcasting) {
+      this.pendingBroadcast = true;
+      return;
+    }
     this.broadcasting = true;
+    this.pendingBroadcast = false;
+
     void this.getState()
       .then((snap) => {
         this.broadcasting = false;
         for (const l of this.listeners) l(snap);
+        if (this.pendingBroadcast) {
+          this.broadcast();
+        }
       })
       .catch(() => {
         this.broadcasting = false;
+        if (this.pendingBroadcast) {
+          this.broadcast();
+        }
       });
   }
 
@@ -861,8 +887,8 @@ function mapCommand(r: Record<string, unknown>): Command {
  * mission_state-style sensor map consumed by mapSensors().
  * The firmware sends -1000 for failed DHT reads — those become absent keys.
  */
-function firmwareSensorMap(r: Record<string, unknown>, headingDeg = 0): Record<string, unknown> {
-  const heardAt = typeof r.ts === "number" ? r.ts : Date.now();
+function firmwareSensorMap(r: Record<string, unknown>, headingDeg = 0, defaultTs?: number): Record<string, unknown> {
+  const heardAt = defaultTs ?? (typeof r.ts === "number" && r.ts > 0 ? r.ts : Date.now());
   const num = (k: string) => (r[k] != null ? Number(r[k]) : null);
   const map: Record<string, unknown> = {};
 
@@ -892,11 +918,14 @@ function firmwareSensorMap(r: Record<string, unknown>, headingDeg = 0): Record<s
   if (obj != null || amb != null) {
     const objectC = obj ?? 0;
     const ambientC = amb ?? 0;
+    const deltaC = objectC - ambientC;
+    const isFire = objectC > 55;
+    const humanHeat = !isFire && isHumanHeat(ambientC, objectC);
     map.thermal = {
       objectC,
       ambientC,
-      deltaC: objectC - ambientC,
-      zone: objectC > 55 ? "FIRE RISK" : objectC > 37 ? "HUMAN HEAT" : "NORMAL",
+      deltaC,
+      zone: isFire ? "FIRE RISK" : humanHeat ? "HUMAN HEAT" : "NORMAL",
       heardAt,
     };
   }
@@ -924,7 +953,7 @@ function firmwareSensorMap(r: Record<string, unknown>, headingDeg = 0): Record<s
       db,
       baseline: 0.07,
       peak: amp,
-      band: db > 70 ? "LOUD" : db > 50 ? "MODERATE" : "QUIET",
+      band: classifySound(db),
       heardAt,
     };
   }
@@ -942,7 +971,7 @@ function firmwareSensorMap(r: Record<string, unknown>, headingDeg = 0): Record<s
 }
 
 /** Firmware row → console firmware/power block (battery, errors, gait). */
-function mapFirmware(r: Record<string, unknown>): NonNullable<ConsoleState["firmware"]> {
+function mapFirmware(r: Record<string, unknown>, defaultTs?: number): NonNullable<ConsoleState["firmware"]> {
   const num = (k: string) => (r[k] != null ? Number(r[k]) : null);
   const rawPct = num("battery_pct");
   const rawVolt = num("battery_voltage");
@@ -962,6 +991,6 @@ function mapFirmware(r: Record<string, unknown>): NonNullable<ConsoleState["firm
     estRuntimeMin,
     errorText,
     gaitState: num("gait_state") ?? 0,
-    updatedAt: typeof r.ts === "number" ? r.ts : Date.now(),
+    updatedAt: defaultTs ?? (typeof r.ts === "number" && r.ts > 0 ? r.ts : Date.now()),
   };
 }

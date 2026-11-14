@@ -3,6 +3,7 @@ import { getStore } from "@/lib/store";
 import { readSessionFromCookies } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * Server-Sent Events stream: pushes a compact snapshot after every store
@@ -56,6 +57,7 @@ export async function GET(req: Request) {
       "content-type": "text/event-stream",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
+      "x-accel-buffering": "no",
     },
   });
 }

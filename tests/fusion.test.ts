@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeScores, DEFAULT_WEIGHTS, type FusionContext } from "@/lib/fusion/engine";
+import { classifySound, computeScores, DEFAULT_WEIGHTS, isHumanHeat, type FusionContext } from "@/lib/fusion/engine";
 
 function ctx(over: Partial<FusionContext> = {}): FusionContext {
   return {
@@ -101,12 +101,92 @@ describe("fusion engine v2 — survivor likelihood", () => {
     expect(old).toBeLessThan(fresh * 0.25);
   });
 
-  it("thermal is a close-range confirmer and never a lone survivor claim at distance", () => {
+  it("two-sensor corroboration (sound + thermal without vision) stays in 60% to 75% range and never beyond 75%", () => {
+    // Both sensors confirm human: human yelling (88 dB) + human heat (36.5°C in 22°C ambient)
+    const dualSensor = computeScores(
+      ctx({
+        sound: { amp: 0.9, baseline: 0.07, peak: 0.9, db: 88, heardAt: 999_500 },
+        thermal: { objectC: 36.5, ambientC: 22.0, heardAt: 999_500 },
+      })
+    );
+    expect(dualSensor.survivor.value).toBeGreaterThanOrEqual(0.60);
+    expect(dualSensor.survivor.value).toBeLessThanOrEqual(0.75);
+
+    // Human talk (60 dB) + human heat
+    const talkAndHeat = computeScores(
+      ctx({
+        sound: { amp: 0.6, baseline: 0.07, peak: 0.6, db: 60, heardAt: 999_500 },
+        thermal: { objectC: 35.0, ambientC: 22.0, heardAt: 999_500 },
+      })
+    );
+    expect(talkAndHeat.survivor.value).toBeGreaterThanOrEqual(0.60);
+    expect(talkAndHeat.survivor.value).toBeLessThanOrEqual(0.75);
+  });
+
+  it("single sensor confirmation (heat alone or speech alone) ranges strictly between 25% and 35% max", () => {
+    // Thermal alone with confirmed human heat (ambient quiet)
+    const heatOnly = computeScores(
+      ctx({
+        sound: { amp: 0.05, baseline: 0.07, peak: 0.05, db: 20, heardAt: 999_500 },
+        thermal: { objectC: 36.5, ambientC: 22.0, heardAt: 999_500 },
+      })
+    );
+    expect(heatOnly.survivor.value).toBeGreaterThanOrEqual(0.25);
+    expect(heatOnly.survivor.value).toBeLessThanOrEqual(0.35);
+
+    // Sound alone with human speech (ambient thermal)
+    const speechOnly = computeScores(
+      ctx({
+        sound: { amp: 0.7, baseline: 0.07, peak: 0.7, db: 70, heardAt: 999_500 },
+        thermal: { objectC: 22.0, ambientC: 22.0, heardAt: 999_500 },
+      })
+    );
+    expect(speechOnly.survivor.value).toBeGreaterThanOrEqual(0.25);
+    expect(speechOnly.survivor.value).toBeLessThanOrEqual(0.35);
+  });
+
+  it("thermal confirms human heat within ambient range and never a lone claim of 100%", () => {
     const thermal = { objectC: 34.5, ambientC: 25, heardAt: 999_000 };
     const s = computeScores(ctx({ thermal })).survivor;
-    expect(s.value).toBeGreaterThan(0);
-    expect(s.value).toBeLessThan(0.7); // low weight ⇒ heat alone never claims a human
-    expect(s.breakdown.thermal.note).toContain("Body-heat");
+    expect(s.value).toBeGreaterThan(0.3);
+    expect(s.value).toBeLessThan(0.7); // heat alone without camera produces balanced in-between score
+    expect(s.breakdown.thermal.note.toLowerCase()).toContain("heat");
+  });
+
+  it("temperature fusion rules table: human heat declaration across ambient ranges", () => {
+    // 1. -20°C to 0°C (Freezing) -> 5°C – 22°C
+    expect(isHumanHeat(-5, 16)).toBe(true);
+    expect(isHumanHeat(-5, 3)).toBe(false);
+
+    // 2. 0°C to 10°C (Very Cold) -> 15°C – 29°C
+    expect(isHumanHeat(5, 22)).toBe(true);
+
+    // 3. 10°C to 20°C (Cool / AC Room) -> 20°C – 33°C
+    expect(isHumanHeat(18, 28)).toBe(true);
+
+    // 4. 20°C to 30°C (Room Temp / Warm) -> 25°C – 40°C (user screenshot: 40.6°C object over 21.7°C ambient)
+    expect(isHumanHeat(21.7, 40.6)).toBe(true);
+    expect(isHumanHeat(25, 36)).toBe(true);
+
+    // 5. 30°C to 40°C (Hot) -> 33.5°C – 41°C
+    expect(isHumanHeat(35, 38)).toBe(true);
+
+    // 6. Above 40°C (Extreme Heat) -> 35°C – 42°C
+    expect(isHumanHeat(42, 38.5)).toBe(true);
+
+    // Rule: difference < 1.5°C must NOT be identified as human heat
+    expect(isHumanHeat(24.0, 25.0)).toBe(false); // delta = 1.0 < 1.5
+    expect(isHumanHeat(22.0, 23.4)).toBe(false); // delta = 1.4 < 1.5
+  });
+
+  it("any reading (e.g. 15-20 dB or ambient thermal) contributes at least 1% to survivor score", () => {
+    const lowSound = computeScores(ctx({ sound: { db: 15, amp: 0.05, baseline: 0.07, peak: 0.05, heardAt: 999_000 } }));
+    expect(lowSound.survivor.value).toBeGreaterThanOrEqual(0.01);
+    expect(lowSound.survivor.breakdown.sound.value).toBeGreaterThanOrEqual(0.03);
+
+    const normalTemp = computeScores(ctx({ thermal: { objectC: 22.0, ambientC: 21.5, heardAt: 999_000 } }));
+    expect(normalTemp.survivor.value).toBeGreaterThanOrEqual(0.01);
+    expect(normalTemp.survivor.breakdown.thermal.value).toBeGreaterThanOrEqual(0.03);
   });
 
   it("fire risk (>55 °C) is a HAZARD, never a survivor signal", () => {
@@ -114,6 +194,67 @@ describe("fusion engine v2 — survivor likelihood", () => {
     expect(r.hazard.fireDetected).toBe(true);
     expect(r.hazard.value).toBeGreaterThanOrEqual(0.35);
     expect(r.survivor.value).toBe(0); // hot object ≠ person
+  });
+
+  it("human detection confidence directly equals vision score and survivor score", () => {
+    for (const conf of [0.65, 0.78, 0.85, 0.92]) {
+      const det = {
+        id: "det-human",
+        ts: 999_500, // within active window (now = 1_000_000)
+        label: "person" as const,
+        confidence: conf,
+        bbox: { x: 0, y: 0, w: 0.2, h: 0.5 },
+        source: "vision" as const,
+      };
+      const res = computeScores(ctx({ detections: [det] }));
+      expect(res.survivor.breakdown.vision.value).toBe(conf);
+      expect(res.survivor.value).toBe(conf);
+    }
+  });
+
+  it("sound decibel classification follows speech-level reference guide", () => {
+    expect(classifySound(20)).toBe("QUIET");
+    expect(classifySound(35)).toBe("HUMAN WHISPER");
+    expect(classifySound(45)).toBe("HUMAN SOFT SPEECH");
+    expect(classifySound(60)).toBe("HUMAN TALK");
+    expect(classifySound(75)).toBe("HUMAN LOUD SPEECH");
+    expect(classifySound(88)).toBe("HUMAN YELLING");
+    expect(classifySound(98)).toBe("Very Loud Sound");
+  });
+
+  it("sounds exceeding 95 dB are classified as Very Loud Sound and do not inflate survivor score as vocalization", () => {
+    const res90 = computeScores(ctx({ sound: { amp: 0.9, baseline: 0.07, peak: 0.9, db: 90, heardAt: 999_500 } }));
+    const res105 = computeScores(ctx({ sound: { amp: 1.0, baseline: 0.07, peak: 1.0, db: 105, heardAt: 999_500 } }));
+    expect(res90.survivor.breakdown.sound.note).toContain("HUMAN YELLING");
+    expect(res105.survivor.breakdown.sound.note).toContain("Very Loud Sound");
+    // 90 dB yelling reflects human presence (~0.90+ sound score, ~0.55+ survivor)
+    // 105 dB is non-vocal disturbance (modest ~0.15 sound score)
+    expect(res90.survivor.breakdown.sound.value).toBeGreaterThan(res105.survivor.breakdown.sound.value);
+    expect(res90.survivor.value).toBeGreaterThan(res105.survivor.value);
+  });
+
+  it("survivor score strictly never reaches or exceeds 100% (always < 1.0)", () => {
+    // Extreme theoretical inputs: 100% camera detection + max sound + peak human thermal heat
+    const det = {
+      id: "det-max",
+      ts: 999_900,
+      label: "person" as const,
+      confidence: 1.0,
+      bbox: { x: 0, y: 0, w: 0.2, h: 0.5 },
+      source: "vision" as const,
+    };
+    const res = computeScores(
+      ctx({
+        detections: [det],
+        sound: { amp: 1.0, baseline: 0.07, peak: 1.0, db: 95, heardAt: 999_900 },
+        thermal: { objectC: 36.5, ambientC: 22.0, heardAt: 999_900 },
+      })
+    );
+    expect(res.survivor.value).toBeLessThan(1.0);
+    expect(res.survivor.value).toBeLessThanOrEqual(0.99);
+    expect(res.survivor.breakdown.vision.value).toBeLessThan(1.0);
+    expect(res.survivor.breakdown.sound.value).toBeLessThan(1.0);
+    expect(res.survivor.breakdown.thermal.value).toBeLessThan(1.0);
   });
 });
 
